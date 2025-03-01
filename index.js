@@ -115,9 +115,12 @@ function onMessage(message) {
         case 'fv':
             const cs = objData.ary.find(a => a.acn === 'cs')
             const csn = objData.ary.find(a => a.acn === 'csn')
+
             if (csn) {
+                // prefere slide notes over slide text
                 handleText(csn.txt)
             } else if (cs) {
+                // fallback to slide text, if no notes are available
                 handleText(cs.txt)
             }
             break
@@ -136,7 +139,6 @@ function handleText(text) {
     text = text.toUpperCase()
 
     sendOscMessage(text)
-    console.log('TEXT: ' + text)
 }
 
 function sendOscMessage(text) {    
@@ -161,6 +163,8 @@ function sendOscMessage(text) {
                 }
             ]
         }, config.resolumeIp, parseInt(config.resolumePort));
+
+        console.log('TEXT (' + (resolumeAddressSelect ? '1' : '2') + '): ' + text)
     } catch (error) {
         console.error(error)
     }
