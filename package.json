@@ -1,0 +1,14 @@
+{
+  "name": "propresenter-osc",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Peter Schuster",
+  "license": "MIT",
+  "dependencies": {
+    "osc": "^2.4.5",
+    "ws": "8"
+  }
+}
