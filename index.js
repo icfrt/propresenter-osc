@@ -21,8 +21,8 @@ const config = {
     password: process.argv[4],
     resolumeIp: process.argv[5],
     resolumePort: process.argv[6],
-    resolumeAddress: process.argv[7],
-    resolumeAddress2: process.argv.length > 8 ? process.argv[8] : undefined,
+    resolumeAddresses: (process.argv[7] || '').split(','),
+    resolumeAddresses2: process.argv.length > 8 ? (process.argv[8] || '').split(',') : [],
 }
 
 function connectWs() {
@@ -143,26 +143,32 @@ function handleText(text) {
 
 function sendOscMessage(text) {    
     try {
-        let selectedAddress = config.resolumeAddress;
+        let selectedAddress = config.resolumeAddresses[0];
+        let additionalAddresses = config.resolumeAddresses.slice(1);
 
         // toggle address
-        if (config.resolumeAddress2) {
-            if (!resolumeAddressSelect) {
-                selectedAddress = config.resolumeAddress2;
+        if (config.resolumeAddresses2 && config.resolumeAddresses2.length > 0) {
+            if (resolumeAddressSelect) {
+                selectedAddress = config.resolumeAddresses2[0];
+                additionalAddresses = config.resolumeAddresses2.slice(1);
             }
 
             resolumeAddressSelect = !resolumeAddressSelect;
         }
 
+        // console.log('Sending ' + selectedAddress)
         oscClient.send({
             address: selectedAddress,
-            args: [
-                {
-                    type: "s",
-                    value: text
-                }
-            ]
+            args: [ { type: "s", value: text } ]
         }, config.resolumeIp, parseInt(config.resolumePort));
+
+        for (let i = 0; i < additionalAddresses.length; i++) {
+            // console.log('Sending ' + additionalAddresses[i])
+            oscClient.send({
+                address: additionalAddresses[i],
+                args: [ { type: "i", value: 1 } ]
+            }, config.resolumeIp, parseInt(config.resolumePort));
+        }
 
         console.log('TEXT (' + (resolumeAddressSelect ? '1' : '2') + '): ' + text)
     } catch (error) {
