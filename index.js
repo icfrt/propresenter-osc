@@ -3,23 +3,10 @@ const osc = require('osc')
 
 const config = require('./config.json')
 
-function debug_log(...data) {
-    if (config.debug) {
-        console.log(...data)
-    }
-}
+const debug_log = config.debug ? console.log : () => {};
+const debug_log_rx = config.debugRx ? console.log : () => {};
+const debug_log_tx = config.debugTx ? console.log : () => {};
 
-function debug_log_rx(...data) {
-    if (config.debugRx) {
-        console.log(...data)
-    }
-}
-
-function debug_log_tx(...data) {
-    if (config.debugTx) {
-        console.log(...data)
-    }
-}
 
 function connectWs() {
     let wsClient = new WebSocket(`ws://${config.host}:${config.port}/stagedisplay`);
@@ -62,11 +49,8 @@ let reconnectTimer = setInterval(() => {
 }
 , 5000);
 
-const oscClient = new osc.UDPPort({
-    localAddress: "0.0.0.0",
-    localPort: 57121,
-});
-
+// Create an osc client
+const oscClient = new osc.UDPPort({ localAddress: "0.0.0.0", localPort: 57121 });
 oscClient.open();
 
 // Listen for incoming OSC messages.
