@@ -1,0 +1,14 @@
+{
+    "host": "127.0.0.1",
+    "port": 1025,
+    "password": "my pw",
+    "resolumeIp": "127.0.0.1",
+    "resolumePort": 7000,
+    "resolumeAddresses": [ "/test/data" ],
+    "resolumeAddresses2": [],
+    "debug": false,
+    "debugRx": false,
+    "debugTx": true,
+    "delyedSecondary": 0,
+    "delayedUpdate": 800
+}

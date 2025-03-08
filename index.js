@@ -1,28 +1,24 @@
 const WebSocket = require('ws')
 const osc = require('osc')
 
-if (!process.argv || process.argv.length < 8) {
-    console.log('ProPresenter Resolume OSC listens to the Stage Display interface of ProPresenter and sends text to OSC.');
-    console.log('')
-    console.log('Usage:')
-    const argv0 = process.pkg ? process.argv0 : (process.argv0 + ' ' + ((process.argv && process.argv.length) > 1 ? process.argv[1] : 'resolume-osc.js'))
-    console.log(`  ${argv0} <propresenter-ip> <propresenter-port> <stagedisplay-password> <resolume ip> <resolume port> <resolume channel>`)
-    console.log('')
-    console.log('Parameters:')
-    console.log('  - <propresenter-ip>         IP address of the Mac/PC running ProPresenter')
-    console.log('  - <propresenter-port>       Port shown in the ProPresenter preferences dialog for network access')
-    console.log('  - <stagedisplay-password>   Password set in the ProPresenter preferences dialog for Stage Display access')
-    process.exit(1)
+const config = require('./config.json')
+
+function debug_log(...data) {
+    if (config.debug) {
+        console.log(...data)
+    }
 }
 
-const config = {
-    host: process.argv[2],
-    port: process.argv[3],
-    password: process.argv[4],
-    resolumeIp: process.argv[5],
-    resolumePort: process.argv[6],
-    resolumeAddresses: (process.argv[7] || '').split(','),
-    resolumeAddresses2: process.argv.length > 8 ? (process.argv[8] || '').split(',') : [],
+function debug_log_rx(...data) {
+    if (config.debugRx) {
+        console.log(...data)
+    }
+}
+
+function debug_log_tx(...data) {
+    if (config.debugTx) {
+        console.log(...data)
+    }
 }
 
 function connectWs() {
@@ -82,7 +78,7 @@ oscClient.on("message", function (oscMsg, timeTag, info) {
 
 function onMessage(message) {
 	var objData = JSON.parse(message);
-    // console.log(objData)
+    debug_log_rx(objData)
 	switch(objData.acn) {
 		case 'ath':
 			if (objData.ath === true) {
@@ -115,13 +111,15 @@ function onMessage(message) {
         case 'fv':
             const cs = objData.ary.find(a => a.acn === 'cs')
             const csn = objData.ary.find(a => a.acn === 'csn')
+            const ns = objData.ary.find(a => a.acn === 'ns')
+            const nsn = objData.ary.find(a => a.acn === 'nsn')
 
-            if (csn) {
-                // prefere slide notes over slide text
-                handleText(csn.txt)
-            } else if (cs) {
-                // fallback to slide text, if no notes are available
-                handleText(cs.txt)
+            // prefere slide notes over slide text
+            const text = csn ? csn.txt : cs ? cs.txt : undefined
+            const next_text = nsn ? nsn.txt : ns ? ns.txt : undefined
+
+            if (text) {
+                handleText(text, next_text)
             }
             break
 		default:
@@ -133,7 +131,8 @@ function onMessage(message) {
  * @param {String} text 
  */
 function handleText(text) {
-    if (!text) text = ''
+    if (!text) text = '';
+    else text = text.trim();
 
     // transformations
     text = text.toUpperCase()
@@ -141,33 +140,80 @@ function handleText(text) {
     sendOscMessage(text)
 }
 
-function sendOscMessage(text) {    
+const delayedUpdates = {
+    [config.resolumeAddresses[0]]: null
+};
+
+const setTexts = {
+    [config.resolumeAddresses[0]]: null
+}
+
+if (config.resolumeAddresses2 && config.resolumeAddresses2.length > 0) {
+    delayedUpdates[config.resolumeAddresses2[0]] = null;
+    setTexts[config.resolumeAddresses2[0]] = null;
+}
+
+function sendResolumeText(address, text) {
+    debug_log_tx('Sending ' + address + ' ' + text)
+    
+    // Clear pending delayed acctions
+    if (delayedUpdates[address] && delayedUpdates[address] !== null) {
+        clearTimeout(delayedUpdates[address]);
+        delayedUpdates[address] = null;
+    }
+    
+    // send new values
+    oscClient.send({
+        address: address,
+        args: [ { type: "s", value: text } ]
+    }, config.resolumeIp, config.resolumePort);
+
+    setTexts[address] = text;
+}
+
+function sendResolumeInt(address, value) {
+    debug_log_tx('Sending ' + address + ' ' + value)
+    oscClient.send({
+        address: address,
+        args: [ { type: "i", value: value } ]
+    }, config.resolumeIp, config.resolumePort);
+}
+
+function sendOscMessage(text, next_text) {    
     try {
         let selectedAddress = config.resolumeAddresses[0];
         let additionalAddresses = config.resolumeAddresses.slice(1);
+        let otherSelectedAddress = null;
 
         // toggle address
         if (config.resolumeAddresses2 && config.resolumeAddresses2.length > 0) {
             if (resolumeAddressSelect) {
+                otherSelectedAddress = selectedAddress;
                 selectedAddress = config.resolumeAddresses2[0];
                 additionalAddresses = config.resolumeAddresses2.slice(1);
+            } else {
+                otherSelectedAddress = config.resolumeAddresses2[0];                
             }
 
             resolumeAddressSelect = !resolumeAddressSelect;
         }
+  
+        sendResolumeText(selectedAddress, text);
 
-        // console.log('Sending ' + selectedAddress)
-        oscClient.send({
-            address: selectedAddress,
-            args: [ { type: "s", value: text } ]
-        }, config.resolumeIp, parseInt(config.resolumePort));
+        if (next_text !== undefined && config.delayedUpdate && config.delayedUpdate > 0) {
+            delayedUpdates[otherSelectedAddress] = setTimeout(
+                () => sendResolumeText(otherSelectedAddress, next_text), 
+                config.delayedUpdate);
+        }
 
         for (let i = 0; i < additionalAddresses.length; i++) {
-            // console.log('Sending ' + additionalAddresses[i])
-            oscClient.send({
-                address: additionalAddresses[i],
-                args: [ { type: "i", value: 1 } ]
-            }, config.resolumeIp, parseInt(config.resolumePort));
+            let cmd = () => sendResolumeInt(additionalAddresses[i], 1);
+
+            if (setTexts[selectedAddress] !== text && config.delyedSecondary && config.delyedSecondary > 0) {
+                setTimeout(cmd, config.delyedSecondary);
+            } else {
+                cmd();
+            }
         }
 
         console.log('TEXT (' + (resolumeAddressSelect ? '1' : '2') + '): ' + text)
